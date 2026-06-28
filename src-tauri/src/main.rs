@@ -73,6 +73,7 @@ unsafe extern "system" {
     fn AssignProcessToJobObject(job: *mut std::ffi::c_void, process: *mut std::ffi::c_void) -> i32;
 }
 
+#[cfg(windows)]
 static BACKEND_BYTES: &[u8] = include_bytes!(
     "../binaries/backend-x86_64-pc-windows-msvc.exe"
 );
@@ -141,36 +142,37 @@ fn main() {
     tauri::Builder::default()
         .manage(BackendProcess(Mutex::new(None)))
         .setup(|app| {
-            let app_data_dir = app.path().app_data_dir()
-                .expect("failed to get app data dir");
-
-            fs::create_dir_all(&app_data_dir)
-                .expect("failed to create app data dir");
-
-            let backend_path = app_data_dir.join("backend.exe");
-
-            {
-                let mut file = fs::File::create(&backend_path)
-                    .expect("failed to create backend file");
-                file.write_all(BACKEND_BYTES)
-                    .expect("failed to write backend bytes");
-            }
-
-            let child = {
-                let mut cmd = std::process::Command::new(&backend_path);
-                #[cfg(windows)]
-                cmd.creation_flags(CREATE_NO_WINDOW);
-                cmd.spawn().expect("failed to start backend")
-            };
-
             #[cfg(windows)]
-            assign_to_job_object(&child);
+            {
+                let app_data_dir = app.path().app_data_dir()
+                    .expect("failed to get app data dir");
 
-            *app.state::<BackendProcess>().0.lock().unwrap() = Some(child);
+                fs::create_dir_all(&app_data_dir)
+                    .expect("failed to create app data dir");
 
-            let ready = wait_for_backend("http://127.0.0.1:8000/laps", 15);
-            if !ready {
-                eprintln!("Warning: backend did not respond within 15s, continuing anyway");
+                let backend_path = app_data_dir.join("backend.exe");
+
+                {
+                    let mut file = fs::File::create(&backend_path)
+                        .expect("failed to create backend file");
+                    file.write_all(BACKEND_BYTES)
+                        .expect("failed to write backend bytes");
+                }
+
+                let child = {
+                    let mut cmd = std::process::Command::new(&backend_path);
+                    cmd.creation_flags(CREATE_NO_WINDOW);
+                    cmd.spawn().expect("failed to start backend")
+                };
+
+                assign_to_job_object(&child);
+
+                *app.state::<BackendProcess>().0.lock().unwrap() = Some(child);
+
+                let ready = wait_for_backend("http://127.0.0.1:8000/laps", 15);
+                if !ready {
+                    eprintln!("Warning: backend did not respond within 15s, continuing anyway");
+                }
             }
 
             let show_item = MenuItem::with_id(app, "show", "Show Novent", true, None::<&str>)?;

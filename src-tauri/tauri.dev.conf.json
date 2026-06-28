@@ -1,7 +1,7 @@
 {
   "build": {
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "npm run dev"
+    "beforeDevCommand": "pnpm dev"
   },
   "app": {
     "windows": [
