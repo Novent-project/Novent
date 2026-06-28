@@ -47,6 +47,14 @@
 let showSettings = $state(false);
 let gamePaths = $state<Record<string, string>>({ AC: '', ACC: '', iRacing: '', LMU: '' });
 let saveStatus = $state('');
+const GAME_LABELS: Record<string, string> = {
+  AC:      'Assetto Corsa',
+  ACC:     'Assetto Corsa Competizione',
+  iRacing: 'iRacing',
+  LMU:     'Le Mans Ultimate',
+};
+let gameConnected = $state(false);
+let connectedGame = $state<string | null>(null);
 
 async function loadConfig() {
   try {
@@ -152,8 +160,6 @@ for (const comp of compLaps) {
   ctx.stroke();
   ctx.setLineDash([]);
 }
-
-   
     ctx.fillStyle = "rgba(255,255,255,0.2)"; ctx.font = "9px monospace"; ctx.textAlign = "left";
     ctx.fillText("100", 3, toY(96) + 9);
     ctx.fillText("0",   3, toY(4));
@@ -273,6 +279,13 @@ for (const comp of compLaps) {
     }
     
     return result;
+  });
+
+  let activeGame = $state<string | null>(null);
+  let gameMenuOpen = $state(false);
+  let games = $derived(Object.keys(groupedLaps));
+  $effect(() => {
+    if ((!activeGame || !games.includes(activeGame)) && games.length > 0) activeGame = games[0];
   });
 
   let telemetryData = $state({
@@ -975,7 +988,6 @@ for (const comp of compLaps) {
   const pps         = totalPoints / lapTimeSec;
 
   let lastTimestamp: number | null = null;
-  let lastTraceUpdate = 0;
 
   function tick(timestamp: number) {
     if (!isPlaying) return;
@@ -1004,12 +1016,9 @@ for (const comp of compLaps) {
     playbackIndex = Math.floor(exactIndex);
     currentTime   = currentTrace.time[playbackIndex] ?? 0;
 
-    if (timestamp - lastTraceUpdate > 100) {
-      drawTrace(playbackIndex);
-      drawSteeringTrace(playbackIndex);
-      drawBrakeTrace(playbackIndex);
-      lastTraceUpdate = timestamp;
-    }
+    drawTrace(playbackIndex);
+    drawSteeringTrace(playbackIndex);
+    drawBrakeTrace(playbackIndex);
 
     animationFrameId = requestAnimationFrame(tick);
   }
@@ -1280,6 +1289,22 @@ function stopPlayback(fromEndOfLap = false) {
     window.addEventListener('keydown', handleKeydown);
     loadConfig();
     let pollInterval: ReturnType<typeof setInterval>;
+    let trayUnlisten: (() => void) | undefined;
+    let statusInterval: ReturnType<typeof setInterval>;
+
+    const fetchStatus = async (): Promise<void> => {
+      try {
+        const res = await fetch('http://127.0.0.1:8000/status');
+        if (res.ok) {
+          const s = await res.json();
+          gameConnected = !!s.connected;
+          connectedGame = s.game ?? null;
+          return;
+        }
+      } catch {}
+      gameConnected = false;
+      connectedGame = null;
+    };
 
     const fetchLaps = async (): Promise<boolean> => {
       try {
@@ -1301,15 +1326,42 @@ function stopPlayback(fromEndOfLap = false) {
         await new Promise<void>((resolve) => setTimeout(resolve, 1000));
         retries--;
       }
+      const reveal = () => {
+        const splash = document.getElementById('app-splash');
+        if (!splash) return;
+        splash.classList.add('hide');
+        setTimeout(() => splash.remove(), 650);
+      };
+      const MIN_SPLASH = 2000;
+      const elapsed = performance.now();
+      elapsed < MIN_SPLASH ? setTimeout(reveal, MIN_SPLASH - elapsed) : reveal();
       pollInterval = setInterval(fetchLaps, 3000);
     };
 
+    const setupTrayMinimize = async (): Promise<void> => {
+      if (!('__TAURI_INTERNALS__' in window)) return;
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const appWindow = getCurrentWindow();
+        trayUnlisten = await appWindow.onResized(async () => {
+          if (await appWindow.isMinimized()) await appWindow.hide();
+        });
+      } catch (e) {
+        console.error('Tray minimize setup failed', e);
+      }
+    };
+
     initData();
+    setupTrayMinimize();
+    fetchStatus();
+    statusInterval = setInterval(fetchStatus, 2000);
 
     return () => {
       window.removeEventListener('keydown', handleKeydown);
       if (pollInterval) clearInterval(pollInterval);
-      cancelAnimationFrame(smoothRafId); 
+      if (statusInterval) clearInterval(statusInterval);
+      cancelAnimationFrame(smoothRafId);
+      trayUnlisten?.();
     };
   });
 </script>
@@ -1325,6 +1377,7 @@ function stopPlayback(fromEndOfLap = false) {
 <Sidebar.Provider style="height: {100/appZoom}vh; overflow: hidden; transform: scale({appZoom}); transform-origin: 0 0; width: {100/appZoom}%;">
   <AppSidebar
     {groupedLaps}
+    bind:activeGame
     {selectedLap}
     compLapIds={compLaps.map(c => c.lap.uuid)}
     canAddComp={compLaps.length < 2}
@@ -1333,77 +1386,124 @@ function stopPlayback(fromEndOfLap = false) {
     onRemoveComp={removeCompLap}
   />
 
-  <Sidebar.Inset class="relative flex flex-col overflow-hidden bg-[#0a0a0a] pb-[52px]" style="height: 100%;">
+  <Sidebar.Inset class="relative flex flex-col overflow-hidden bg-[#08090b] pb-[52px]" style="height: 100%;">
   {#if showSettings}
-  <div class="absolute inset-0 z-40 bg-[#0a0a0a] flex flex-col">
-    <div class="flex h-11 shrink-0 items-center justify-between px-4 border-b border-white/[0.06] bg-[#0f0f0f]">
-      <span class="text-[11px] font-mono text-white/60 uppercase tracking-widest">Settings</span>
-      <button onclick={() => showSettings = false} class="text-white-600 hover:text-white transition-colors">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  <div class="absolute inset-0 z-40 bg-[#08090b] flex flex-col">
+    <div class="flex h-11 shrink-0 items-center justify-between px-4 border-b border-white/[0.06] bg-[#0c0d10]/80 backdrop-blur-md">
+      <span class="flex items-center gap-2 text-[11px] font-mono text-white/60 uppercase tracking-widest">
+        <span class="material-symbols-outlined" style="font-size:15px;">tune</span>
+        Settings
+      </span>
+      <button onclick={() => showSettings = false} class="flex items-center text-white/40 hover:text-white transition-colors">
+        <span class="material-symbols-outlined" style="font-size:18px;">close</span>
       </button>
     </div>
 
-    <div class="flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-6">
-      <div class="flex flex-col gap-4">
-        <p class="text-[9px] font-mono uppercase tracking-[0.15em] text-white-600">Game Install Paths</p>
-        <p class="text-[10px] font-mono text-white-700 leading-relaxed">
-          Point each entry to your game's root install folder so OpenSimTelemetry can reliably detect when the game is running.
-        </p>
+    <div class="flex-1 overflow-y-auto px-6 py-8">
+      <div class="mx-auto w-full max-w-[640px] flex flex-col gap-7">
 
-        {#each Object.keys(gamePaths) as key}
-          <div class="flex flex-col gap-1.5">
-            <label class="text-[10px] font-mono text-white-500 uppercase tracking-widest">{key}</label>
-            <input
-              type="text"
-              bind:value={gamePaths[key]}
-                placeholder={
-                  key === 'AC'      ? 'C:/Program Files (x86)/Steam/steamapps/common/assettocorsa/acs.exe' :
-                  key === 'ACC'     ? 'C:/Program Files (x86)/Steam/steamapps/common/Assetto Corsa Competizione/AC2.exe' :
-                  key === 'LMU'     ? 'C:/Program Files (x86)/Steam/steamapps/common/Le Mans Ultimate/Le Mans Ultimate.exe' :
-                  key === 'iRacing' ? 'C:/Users/username/Documents/iRacing/iRacingSim64DX11.exe' :
-                  'Path to game executable (.exe)'
-                }
-              class="w-full bg-zinc-900 border border-white/[0.08] rounded px-3 py-2 text-[11px] font-mono
-                     text-white/80 placeholder:text-zinc-700 focus:outline-none focus:border-white/20 transition-colors"
-            />
+        <div class="flex flex-col gap-1.5">
+          <h2 class="text-[15px] font-semibold tracking-tight text-white">Game detection</h2>
+          <p class="text-[12px] text-white/45 leading-relaxed max-w-[60ch]">
+            Point each entry to the game's executable so Novent can detect when it's running and capture telemetry automatically.
+          </p>
+        </div>
+
+        <div class="rounded-md bg-white/[0.02] ring-1 ring-white/[0.06] divide-y divide-white/[0.05]">
+          {#each Object.keys(gamePaths) as key}
+            <div class="flex flex-col gap-2.5 p-4">
+              <div class="flex items-center gap-2.5">
+                <span class="flex h-6 items-center justify-center rounded px-2 bg-emerald-500/10 ring-1 ring-emerald-500/20 text-[10px] font-mono font-semibold text-emerald-300">{key}</span>
+                <span class="text-[12px] font-medium text-white/85">{GAME_LABELS[key] ?? key}</span>
+                <span class="ml-auto flex items-center gap-1 text-[9px] font-mono uppercase tracking-[0.12em] {gamePaths[key] ? 'text-emerald-400' : 'text-white/25'}">
+                  {#if gamePaths[key]}
+                    <span class="material-symbols-outlined" style="font-size:14px;">check_circle</span>
+                    Configured
+                  {:else}
+                    Not set
+                  {/if}
+                </span>
+              </div>
+              <div class="relative">
+                <span class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-white/25 pointer-events-none" style="font-size:15px;">folder_open</span>
+                <input
+                  type="text"
+                  bind:value={gamePaths[key]}
+                  placeholder={
+                    key === 'AC'      ? 'C:/Program Files (x86)/Steam/steamapps/common/assettocorsa/acs.exe' :
+                    key === 'ACC'     ? 'C:/Program Files (x86)/Steam/steamapps/common/Assetto Corsa Competizione/AC2.exe' :
+                    key === 'LMU'     ? 'C:/Program Files (x86)/Steam/steamapps/common/Le Mans Ultimate/Le Mans Ultimate.exe' :
+                    key === 'iRacing' ? 'C:/Users/username/Documents/iRacing/iRacingSim64DX11.exe' :
+                    'Path to game executable (.exe)'
+                  }
+                  class="w-full bg-black/30 border border-white/[0.08] rounded-md pl-8 pr-3 py-2 text-[11px] font-mono
+                         text-white/80 placeholder:text-white/20 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/25 transition-all"
+                />
+              </div>
+            </div>
+          {/each}
+        </div>
+
+        <div class="flex items-center gap-3">
+          <button
+            onclick={saveConfig}
+            class="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-emerald-500 text-black text-[11px] font-mono font-semibold uppercase tracking-wide hover:bg-emerald-400 active:scale-[0.98] transition-all"
+          >
+            <span class="material-symbols-outlined" style="font-size:15px;">save</span>
+            Save changes
+          </button>
+          {#if saveStatus}
+            <span class="inline-flex items-center gap-1 text-[11px] font-mono {saveStatus === 'Saved' ? 'text-emerald-400' : 'text-red-400'}">
+              <span class="material-symbols-outlined" style="font-size:15px;">{saveStatus === 'Saved' ? 'check_circle' : 'error'}</span>
+              {saveStatus}
+            </span>
+          {/if}
+        </div>
+
+        <div class="flex flex-col gap-1.5 pt-1">
+          <h2 class="text-[15px] font-semibold tracking-tight text-white">Display</h2>
+          <p class="text-[12px] text-white/45 leading-relaxed max-w-[60ch]">
+            Scale the entire interface. You can also press Ctrl&nbsp;+ / Ctrl&nbsp;− while the app is focused, or Ctrl&nbsp;0 to reset.
+          </p>
+        </div>
+        <div class="rounded-md bg-white/[0.02] ring-1 ring-white/[0.06]">
+          <div class="flex items-center justify-between gap-4 p-4">
+            <div class="flex flex-col">
+              <span class="text-[12px] font-medium text-white/85">Interface zoom</span>
+              <span class="text-[9px] font-mono uppercase tracking-[0.12em] text-white/30">{Math.round(appZoom * 100)}% scale</span>
+            </div>
+            <div class="flex items-center gap-1 rounded-md bg-white/[0.03] border border-white/[0.06] px-1 py-1">
+              <button onclick={() => adjustZoom(-ZOOM_STEP)} class="w-7 h-7 flex items-center justify-center rounded-sm text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-all"><span class="material-symbols-outlined" style="font-size:18px;">remove</span></button>
+              <span class="text-[11px] font-mono text-white/70 w-10 text-center tabular-nums">{Math.round(appZoom * 100)}%</span>
+              <button onclick={() => adjustZoom(ZOOM_STEP)} class="w-7 h-7 flex items-center justify-center rounded-sm text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-all"><span class="material-symbols-outlined" style="font-size:18px;">add</span></button>
+              <button onclick={() => appZoom = 1} class="ml-1 px-2 h-7 flex items-center rounded-sm text-[10px] font-mono uppercase tracking-wider text-white/40 hover:text-white hover:bg-white/[0.06] transition-all">Reset</button>
+            </div>
           </div>
-        {/each}
-      </div>
+        </div>
 
-      <div class="flex items-center gap-3">
-        <button
-          onclick={saveConfig}
-          class="px-4 py-2 rounded bg-white/5 border border-white/10 text-[11px] font-mono
-                 text-white/60 hover:text-white hover:bg-white/10 transition-all"
-        >
-          Save
-        </button>
-        {#if saveStatus}
-          <span class="text-[10px] font-mono {saveStatus === 'Saved' ? 'text-emerald-500' : 'text-red-400'}">{saveStatus}</span>
-        {/if}
       </div>
     </div>
   </div>
 {/if}
 
-    <header class="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-white/[0.06] px-3 bg-[#0f0f0f]">
+    <header class="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-white/[0.06] px-3 bg-[#0c0d10]/80 backdrop-blur-md">
       <div class="flex items-center gap-2">
         <Sidebar.Trigger class="w-8 h-8 [&_svg]:!w-3.5 [&_svg]:!h-3.5 text-zinc-500 hover:text-white" />
         <Separator orientation="vertical" class="h-4 bg-white/10" />
         <div class="flex items-center gap-1">
           {#if telemetryData.trackName}
-            <div class="flex items-center gap-2 px-2.5 py-1 rounded bg-white/5 border border-white/10">
-              <span class="w-1.5 h-1.5 rounded-full bg-white"></span>
+            <div class="flex items-center gap-2 px-2.5 py-1 rounded-md bg-emerald-500/[0.08] border border-emerald-500/20">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
               <span class="text-[11px] font-mono text-white/80">{telemetryData.car}</span>
               <span class="text-[11px] font-mono text-emerald-400 tabular-nums">{telemetryData.lapTime}</span>
             </div>
           {/if}
           {#each compLaps as comp}
-            <div class="flex items-center gap-2 px-2.5 py-1 rounded bg-white/5 border border-white/10">
+            <div class="flex items-center gap-2 px-2.5 py-1 rounded-md bg-white/[0.04] border border-white/[0.08]">
               <span class="w-1.5 h-1.5 rounded-full" style="background:{comp.color}"></span>
               <span class="text-[11px] font-mono tabular-nums" style="color:{comp.color}">{comp.lap.lap_time || comp.lap.time}</span>
-              <button onclick={() => removeCompLap(comp.lap.uuid)} class="text-white/20 hover:text-red-400 transition-colors ml-0.5">
-                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              <button onclick={() => removeCompLap(comp.lap.uuid)} class="flex items-center text-white/20 hover:text-red-400 transition-colors ml-0.5">
+                <span class="material-symbols-outlined" style="font-size:13px;">close</span>
               </button>
             </div>
           {/each}
@@ -1411,27 +1511,59 @@ function stopPlayback(fromEndOfLap = false) {
       </div>
 
       <div class="flex items-center gap-3">
-        <div class="flex items-center gap-0.5">
-          <button onclick={() => adjustZoom(-ZOOM_STEP)} class="w-6 h-6 flex items-center justify-center rounded text-zinc-500 hover:text-white hover:bg-white/5 font-mono text-sm transition-all">−</button>
-          <span class="text-[10px] font-mono text-white-600 w-8 text-center tabular-nums">{Math.round(appZoom * 100)}%</span>
-          <button onclick={() => adjustZoom(ZOOM_STEP)}  class="w-6 h-6 flex items-center justify-center rounded text-zinc-500 hover:text-white hover:bg-white/5 font-mono text-sm transition-all">+</button>
+        <div
+          class="flex items-center gap-1.5 rounded-md px-2 py-1 border {gameConnected ? 'bg-emerald-500/[0.08] border-emerald-500/20' : 'bg-white/[0.02] border-white/[0.06]'}"
+          title={gameConnected ? `Connected to ${connectedGame ?? 'sim'}` : 'No game detected'}
+        >
+          <span class="w-1.5 h-1.5 rounded-full {gameConnected ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'}"></span>
+          <span class="text-[10px] font-mono uppercase tracking-wider {gameConnected ? 'text-emerald-300' : 'text-white/40'}">
+            {gameConnected ? (connectedGame ?? 'Connected') : 'No game'}
+          </span>
+        </div>
+        <Separator orientation="vertical" class="h-4 bg-white/10" />
+        <div class="relative">
+          <button
+            onclick={() => gameMenuOpen = !gameMenuOpen}
+            disabled={games.length === 0}
+            class="flex items-center gap-2 rounded-md bg-white/[0.03] border border-white/[0.06] pl-2 pr-1.5 py-1 hover:bg-white/[0.06] disabled:opacity-50 disabled:cursor-default transition-all"
+            title="Select game"
+          >
+            <span class="material-symbols-outlined text-white/40" style="font-size:15px;">sports_esports</span>
+            <span class="text-[11px] font-mono text-white/80">{activeGame ?? 'No data'}</span>
+            <span class="material-symbols-outlined text-white/40 transition-transform {gameMenuOpen ? 'rotate-180' : ''}" style="font-size:16px;">expand_more</span>
+          </button>
+          {#if gameMenuOpen}
+            <button class="fixed inset-0 z-40 cursor-default" tabindex="-1" aria-label="Close game menu" onclick={() => gameMenuOpen = false}></button>
+            <div class="absolute right-0 top-full mt-1.5 z-50 min-w-[190px] rounded-md bg-[#0c0d10] border border-white/[0.08] shadow-[0_8px_30px_rgba(0,0,0,0.5)] py-1">
+              {#each games as g}
+                <button
+                  onclick={() => { activeGame = g; gameMenuOpen = false; }}
+                  class="flex items-center gap-2.5 w-full px-3 py-1.5 text-left hover:bg-white/[0.05] transition-colors"
+                >
+                  <span class="w-1.5 h-1.5 rounded-full shrink-0 {activeGame === g ? 'bg-emerald-400' : 'bg-transparent'}"></span>
+                  <span class="text-[11px] font-mono {activeGame === g ? 'text-emerald-300' : 'text-white/70'}">{GAME_LABELS[g] ?? g}</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
         </div>
         <Separator orientation="vertical" class="h-4 bg-white/10" />
         <button
         onclick={() => showSettings = !showSettings}
-        class="text-[11px] font-mono text-white-600 uppercase tracking-widest hover:text-white transition-colors"
+        class="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-mono text-white/50 uppercase tracking-widest hover:text-white hover:bg-white/[0.05] transition-all"
       >
-        {showSettings ? 'Close' : ("Settings")}
+        <span class="material-symbols-outlined" style="font-size:15px;">{showSettings ? 'close' : 'settings'}</span>
+        {showSettings ? 'Close' : 'Settings'}
       </button>
       </div>
       
     </header>
 
-    <div class="flex flex-1 overflow-hidden min-h-0">
+    <div class="flex flex-1 overflow-hidden min-h-0 gap-2.5 p-2.5">
 
-  
+
       <div
-        class="relative flex-1 bg-black"
+        class="relative flex-1 overflow-hidden rounded-md ring-1 ring-white/[0.06] shadow-[0_4px_30px_rgba(0,0,0,0.5)]"
         bind:clientWidth={canvasWidth}
         bind:clientHeight={canvasHeight}
         role="application"
@@ -1440,20 +1572,20 @@ function stopPlayback(fromEndOfLap = false) {
         onpointerdown={onMapPointerDown}
         onpointermove={onMapPointerMove}
         onpointerup={onMapPointerUp}
-        style="cursor: {isPanning ? 'grabbing' : 'grab'}"
+        style="cursor: {isPanning ? 'grabbing' : 'grab'}; background: #0a0b0d;"
       >
         {#if currentTrace.worldX.length > 0}
           <canvas bind:this={mapCanvas} class="absolute inset-0 w-full h-full block"></canvas>
           <div class="absolute bottom-4 left-4 flex flex-col gap-1.5 z-10">
             {#if telemetryData.car}
-              <div class="flex items-center gap-2 px-2.5 py-1.5 rounded bg-black/70 backdrop-blur-sm border border-white/10">
-                <span class="w-2 h-2 rounded-full bg-white shrink-0"></span>
+              <div class="flex items-center gap-2 px-3 py-1.5 rounded-md bg-black/60 backdrop-blur-md border border-white/[0.08]">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
                 <span class="text-[10px] font-mono text-white/70">{telemetryData.car}</span>
                 <span class="ml-2 text-[10px] font-mono text-emerald-400 tabular-nums">{telemetryData.lapTime}</span>
               </div>
             {/if}
             {#each compLaps as comp}
-              <div class="flex items-center gap-2 px-2.5 py-1.5 rounded bg-black/70 backdrop-blur-sm border border-white/10">
+              <div class="flex items-center gap-2 px-3 py-1.5 rounded-md bg-black/60 backdrop-blur-md border border-white/[0.08]">
                 <span class="w-2 h-2 rounded-full shrink-0" style="background:{comp.color}"></span>
                 <span class="text-[10px] font-mono tabular-nums" style="color:{comp.color}">{comp.lap.car}</span>
                 <span class="ml-2 text-[10px] font-mono tabular-nums" style="color:{comp.color}">{comp.lap.lap_time || comp.lap.time}</span>
@@ -1464,7 +1596,7 @@ function stopPlayback(fromEndOfLap = false) {
           <div class="absolute inset-0 flex items-center justify-center">
             <div class="flex flex-col items-center gap-3">
               <div class="w-12 h-12 rounded-full border border-white/10 flex items-center justify-center">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+                <span class="material-symbols-outlined text-white/30" style="font-size:22px;">schedule</span>
               </div>
               <span class="text-[11px] font-mono uppercase tracking-widest text-white/20">Select a lap to begin</span>
             </div>
@@ -1473,20 +1605,20 @@ function stopPlayback(fromEndOfLap = false) {
       </div>
 
 
-      <div class="w-[420px] shrink-0 border-l border-white/[0.06] flex flex-col bg-[#0a0a0a] overflow-hidden">
+      <div class="w-[420px] shrink-0 flex flex-col rounded-md ring-1 ring-white/[0.06] bg-[#0b0c0e] overflow-hidden shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
 
         {#if !selectedLap}
           <div class="flex-1 flex items-center justify-center">
             <span class="text-[11px] font-mono uppercase tracking-widest text-white/15">No lap selected</span>
           </div>
         {:else}
-          <div class="flex-1 overflow-y-auto overflow-x-hidden">
+          <div class="flex-1 overflow-y-auto overflow-x-hidden p-3 flex flex-col gap-3">
 
 
-            <div class="border-b border-white/[0.06]">
-              <div class="flex items-center justify-between px-4 pt-3 pb-1">
-                <span class="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-600">Throttle</span>
-                <span class="w-2 h-[2px] rounded-full bg-emerald-500 inline-block"></span>
+            <div class="rounded-md bg-white/[0.02] ring-1 ring-white/[0.06] overflow-hidden">
+              <div class="flex items-center gap-2 px-3.5 pt-2.5 pb-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span class="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-500">Throttle</span>
               </div>
               <div class="px-3 pb-3">
                 <canvas bind:this={traceCanvas} class="w-full block rounded-sm" style="height: 90px;"></canvas>
@@ -1494,20 +1626,20 @@ function stopPlayback(fromEndOfLap = false) {
             </div>
 
 
-            <div class="border-b border-white/[0.06]">
-              <div class="flex items-center justify-between px-4 pt-3 pb-1">
-                <span class="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-600">Brake</span>
-                <span class="w-2 h-[2px] rounded-full bg-red-500 inline-block"></span>
+            <div class="rounded-md bg-white/[0.02] ring-1 ring-white/[0.06] overflow-hidden">
+              <div class="flex items-center gap-2 px-3.5 pt-2.5 pb-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                <span class="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-500">Brake</span>
               </div>
               <div class="px-3 pb-3">
                 <canvas bind:this={brakeCanvas} class="w-full block rounded-sm" style="height: 90px;"></canvas>
               </div>
             </div>
 
-            <div class="border-b border-white/[0.06]">
-              <div class="flex items-center justify-between px-4 pt-3 pb-1">
-                <span class="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-600">Steering</span>
-                <span class="w-2 h-[2px] rounded-full bg-violet-500 inline-block"></span>
+            <div class="rounded-md bg-white/[0.02] ring-1 ring-white/[0.06] overflow-hidden">
+              <div class="flex items-center gap-2 px-3.5 pt-2.5 pb-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-violet-500"></span>
+                <span class="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-500">Steering</span>
               </div>
               <div class="px-3 pb-3">
                 <canvas bind:this={steeringCanvas} class="w-full block rounded-sm" style="height: 90px;"></canvas>
@@ -1516,13 +1648,13 @@ function stopPlayback(fromEndOfLap = false) {
 
    
             {#if compLaps.length > 0}
-              <div class="border-b border-white/[0.06]">
-                <div class="px-4 pt-3 pb-1">
-                  <span class="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-600">Comparison — Throttle &amp; Brake</span>
+              <div class="rounded-md bg-white/[0.02] ring-1 ring-white/[0.06] overflow-hidden">
+                <div class="px-3.5 pt-2.5 pb-1.5">
+                  <span class="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-500">Comparison — Throttle &amp; Brake</span>
                 </div>
-                <div class="grid gap-px bg-white/[0.04]" style="grid-template-columns: repeat({allLaps.length}, 1fr);">
+                <div class="grid gap-px bg-white/[0.05]" style="grid-template-columns: repeat({allLaps.length}, 1fr);">
                   {#each allLaps as lapEntry, i}
-                    <div class="flex flex-col bg-[#0a0a0a]">
+                    <div class="flex flex-col bg-[#0b0c0e]">
                       <div class="flex items-center gap-1.5 px-2 pt-2 pb-1 shrink-0">
                         <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background:{lapEntry.color}"></span>
                         <span class="text-[9px] font-mono tabular-nums truncate" style="color:{lapEntry.color}">{lapEntry.lapTime}</span>
@@ -1535,13 +1667,13 @@ function stopPlayback(fromEndOfLap = false) {
                 </div>
               </div>
 
-              <div>
-                <div class="px-4 pt-3 pb-1">
-                  <span class="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-600">Comparison — Steering</span>
+              <div class="rounded-md bg-white/[0.02] ring-1 ring-white/[0.06] overflow-hidden">
+                <div class="px-3.5 pt-2.5 pb-1.5">
+                  <span class="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-500">Comparison — Steering</span>
                 </div>
-                <div class="grid gap-px bg-white/[0.04]" style="grid-template-columns: repeat({allLaps.length}, 1fr);">
+                <div class="grid gap-px bg-white/[0.05]" style="grid-template-columns: repeat({allLaps.length}, 1fr);">
                   {#each allLaps as lapEntry, i}
-                    <div class="flex flex-col bg-[#0a0a0a]">
+                    <div class="flex flex-col bg-[#0b0c0e]">
                       <div class="px-1.5 pt-1 pb-2">
                         <canvas bind:this={compSteerCanvases[i]} class="w-full block rounded-sm" style="height:60px;"></canvas>
                       </div>
@@ -1560,7 +1692,7 @@ function stopPlayback(fromEndOfLap = false) {
 </Sidebar.Provider>
 
 
-<div class="fixed bottom-0 left-0 right-0 z-50 border-t border-white/[0.06] bg-[#0f0f0f] px-4 py-2.5 flex items-center gap-4">
+<div class="fixed bottom-0 left-0 right-0 z-50 border-t border-white/[0.06] bg-[#0c0d10]/90 backdrop-blur-md px-4 py-2.5 flex items-center gap-4">
 
 
   <div class="flex items-center gap-1 shrink-0">
@@ -1574,18 +1706,18 @@ function stopPlayback(fromEndOfLap = false) {
       currentTime   = currentTrace.time[playbackIndex] ?? 0; 
       drawTrace(playbackIndex); drawSteeringTrace(playbackIndex); drawBrakeTrace(playbackIndex);
     }}
-      class="w-7 h-7 flex items-center justify-center rounded text-zinc-500 hover:text-white hover:bg-white/5 transition-all"
+      class="w-7 h-7 flex items-center justify-center rounded-md text-zinc-500 hover:text-white hover:bg-white/[0.06] transition-all"
     >
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
+      <span class="material-symbols-outlined" style="font-size:18px;">skip_previous</span>
     </button>
     <button
       onclick={togglePlayback}
-      class="w-8 h-8 flex items-center justify-center rounded-full bg-white text-black hover:bg-zinc-200 active:scale-95 transition-all"
+      class="w-8 h-8 flex items-center justify-center rounded-full bg-emerald-500 text-black hover:bg-emerald-400 active:scale-95 transition-all"
     >
       {#if isPlaying}
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+        <span class="material-symbols-outlined" style="font-size:20px;">pause</span>
       {:else}
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        <span class="material-symbols-outlined" style="font-size:20px;">play_arrow</span>
       {/if}
     </button>
     <button
@@ -1598,9 +1730,9 @@ function stopPlayback(fromEndOfLap = false) {
     currentTime   = currentTrace.time[playbackIndex] ?? 0; 
     drawTrace(playbackIndex); drawSteeringTrace(playbackIndex); drawBrakeTrace(playbackIndex);
   }}
-      class="w-7 h-7 flex items-center justify-center rounded text-zinc-500 hover:text-white hover:bg-white/5 transition-all"
+      class="w-7 h-7 flex items-center justify-center rounded-md text-zinc-500 hover:text-white hover:bg-white/[0.06] transition-all"
     >
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zm2-8.14 4.96 2.14L8 14.14V9.86zM16 6h2v12h-2z"/></svg>
+      <span class="material-symbols-outlined" style="font-size:18px;">skip_next</span>
     </button>
   </div>
 
@@ -1630,14 +1762,14 @@ function stopPlayback(fromEndOfLap = false) {
         drawSteeringTrace(playbackIndex);
         drawBrakeTrace(playbackIndex);
       }}
-      class="w-full h-1 rounded-full appearance-none cursor-pointer
-             [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3
-             [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full
-             [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_0_6px_rgba(255,255,255,0.4)]
+      class="w-full h-1.5 rounded-full appearance-none cursor-pointer
+             [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5
+             [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full
+             [&::-webkit-slider-thumb]:bg-emerald-400
              [&::-webkit-slider-thumb]:hover:scale-125 [&::-webkit-slider-thumb]:transition-transform
-             [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:h-3
-             [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-0"
-      style="background: linear-gradient(to right, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0.6) {totalLapTime > 0 ? (currentTime / totalLapTime) * 100 : 0}%, rgba(255,255,255,0.08) {totalLapTime > 0 ? (currentTime / totalLapTime) * 100 : 0}%, rgba(255,255,255,0.08) 100%)"
+             [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5
+             [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-emerald-400 [&::-moz-range-thumb]:border-0"
+      style="background: linear-gradient(to right, rgba(16,185,129,0.85) 0%, rgba(16,185,129,0.85) {totalLapTime > 0 ? (currentTime / totalLapTime) * 100 : 0}%, rgba(255,255,255,0.08) {totalLapTime > 0 ? (currentTime / totalLapTime) * 100 : 0}%, rgba(255,255,255,0.08) 100%)"
     />
   </div>
 
@@ -1651,7 +1783,7 @@ function stopPlayback(fromEndOfLap = false) {
   exactIndex    = playbackIndex;
   currentTime   = currentTrace.time[playbackIndex] ?? 0; 
   drawTrace(playbackIndex); drawSteeringTrace(playbackIndex); drawBrakeTrace(playbackIndex);
-}} class="px-2 h-6 flex items-center justify-center rounded text-[10px] font-mono text-zinc-600 hover:text-white hover:bg-white/5 transition-all">−0.1s</button>
+}} class="px-2.5 h-6 flex items-center justify-center rounded-sm text-[10px] font-mono text-zinc-500 hover:text-white hover:bg-white/[0.06] transition-all">−0.1s</button>
     <button onclick={() => {
   const t = Math.min(totalLapTime, currentTime + 0.1);
   let idx = currentTrace.time.findIndex(pt => pt >= t);
@@ -1660,6 +1792,6 @@ function stopPlayback(fromEndOfLap = false) {
   exactIndex    = playbackIndex;
   currentTime   = currentTrace.time[playbackIndex] ?? 0;  
   drawTrace(playbackIndex); drawSteeringTrace(playbackIndex); drawBrakeTrace(playbackIndex);
-}} class="px-2 h-6 flex items-center justify-center rounded text-[10px] font-mono text-zinc-600 hover:text-white hover:bg-white/5 transition-all">+0.1s</button>
+}} class="px-2.5 h-6 flex items-center justify-center rounded-sm text-[10px] font-mono text-zinc-500 hover:text-white hover:bg-white/[0.06] transition-all">+0.1s</button>
   </div>
 </div>

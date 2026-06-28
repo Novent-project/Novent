@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Open Sim Telemetry",
+  "productName": "Novent",
   "version": "0.1.0",
-  "identifier": "com.novent.ost",
+  "identifier": "com.novent.app",
   "build": {
     "frontendDist": "../build",
     "beforeBuildCommand": "pnpm build"
@@ -10,14 +10,15 @@
   "app": {
     "windows": [
       {
-        "title": "Open Sim Telemetry",
+        "title": "Novent",
         "width": 1280,
         "height": 800,
         "minWidth": 800,
         "minHeight": 600,
         "resizable": true,
         "fullscreen": false,
-        "center": true
+        "center": true,
+        "backgroundColor": "#08090b"
       }
     ],
     "security": {

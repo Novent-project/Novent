@@ -3,9 +3,127 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <style>
+            #app-splash {
+                position: fixed;
+                inset: 0;
+                z-index: 2147483647;
+                overflow: hidden;
+                background: #070809;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+                transition: opacity 600ms ease;
+            }
+            #app-splash.hide {
+                opacity: 0;
+                pointer-events: none;
+            }
+
+            #app-splash .road-scene {
+                position: absolute;
+                inset: 0;
+                overflow: hidden;
+                perspective: 300px;
+                perspective-origin: 50% 34%;
+            }
+            #app-splash .road {
+                position: absolute;
+                left: 50%;
+                bottom: 0;
+                width: 360%;
+                height: 170%;
+                transform: translateX(-50%) rotateX(82deg);
+                transform-origin: 50% 100%;
+                background-color: #14171b;
+                background-image:
+                    linear-gradient(rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.42)),
+                    linear-gradient(rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.42)),
+                    repeating-linear-gradient(to bottom, #34d399 0 36px, transparent 36px 94px);
+                background-repeat: no-repeat, no-repeat, repeat-y;
+                background-position: 41% 0, 59% 0, 50% 0;
+                background-size: 6px 100%, 6px 100%, 9px 94px;
+                animation: ns-road 0.6s linear infinite;
+            }
+            #app-splash .road-scene::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                background:
+                    linear-gradient(to top, transparent 0%, transparent 24%, #070809 70%),
+                    radial-gradient(120% 80% at 50% 100%, transparent 40%, rgba(7, 8, 9, 0.65) 100%);
+            }
+
+            #app-splash .brand {
+                position: relative;
+                z-index: 2;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 16px;
+                transform: translateY(-4%);
+                animation: ns-rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) 0.2s both;
+            }
+            #app-splash .ns-row { display: flex; align-items: center; gap: 13px; }
+            #app-splash .ns-name {
+                font-size: 32px;
+                font-weight: 800;
+                letter-spacing: -0.025em;
+                color: #fff;
+            }
+            #app-splash .ns-tag {
+                font-size: 10px;
+                letter-spacing: 0.28em;
+                text-transform: uppercase;
+                color: rgba(255, 255, 255, 0.32);
+                font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+            }
+            #app-splash .ns-bar {
+                width: 170px;
+                height: 2px;
+                margin-top: 2px;
+                border-radius: 2px;
+                background: rgba(255, 255, 255, 0.08);
+                overflow: hidden;
+            }
+            #app-splash .ns-bar::before {
+                content: "";
+                display: block;
+                width: 38%;
+                height: 100%;
+                border-radius: 2px;
+                background: #34d399;
+                animation: ns-bar 1.15s ease-in-out infinite;
+            }
+
+            @keyframes ns-road { to { background-position: 41% 0, 59% 0, 50% 94px; } }
+            @keyframes ns-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(-4%); } }
+            @keyframes ns-bar { 0% { transform: translateX(-110%); } 100% { transform: translateX(380%); } }
+
+            @media (prefers-reduced-motion: reduce) {
+                #app-splash .road { animation: none; }
+                #app-splash .brand { animation: none; }
+                #app-splash .ns-bar::before { animation: none; width: 100%; }
+            }
+        </style>
         %sveltekit.head%
     </head>
     <body data-sveltekit-preload-data="hover">
         <div style="display: contents">%sveltekit.body%</div>
+        <div id="app-splash">
+            <div class="road-scene"><div class="road"></div></div>
+            <div class="brand">
+                <div class="ns-row">
+                    <svg width="42" height="42" viewBox="0 0 64 64" fill="none" style="color:#10b981">
+                        <path d="M14 8 H50 a6 6 0 0 1 6 6 V42 L42 56 H14 a6 6 0 0 1 -6 -6 V14 a6 6 0 0 1 6 -6 Z" fill="currentColor" fill-opacity="0.12" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+                        <path d="M24 45 V21 L40 45 V21" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span class="ns-name">Novent</span>
+                </div>
+                <span class="ns-tag">Starting telemetry engine</span>
+                <div class="ns-bar"></div>
+            </div>
+        </div>
     </body>
 </html>

@@ -8,7 +8,11 @@ use std::{
     time::{Duration, Instant},
     thread,
 };
-use tauri::Manager;
+use tauri::{
+    Manager,
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+};
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -58,7 +62,7 @@ struct JobObjectExtendedLimitInformation {
 }
 
 #[cfg(windows)]
-extern "system" {
+unsafe extern "system" {
     fn CreateJobObjectW(attrs: *mut std::ffi::c_void, name: *const u16) -> *mut std::ffi::c_void;
     fn SetInformationJobObject(
         job: *mut std::ffi::c_void,
@@ -171,10 +175,57 @@ fn main() {
                 }
             }
 
+            let show_item = MenuItem::with_id(app, "show", "Show Novent", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+
+            TrayIconBuilder::with_id("novent-tray")
+                .icon(app.default_window_icon().unwrap().clone())
+                .tooltip("Novent")
+                .menu(&tray_menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.unminimize();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    "quit" => {
+                        if let Some(mut child) = app.state::<BackendProcess>().0.lock().unwrap().take() {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                        }
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.unminimize();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+            tauri::WindowEvent::Destroyed => {
                 let state = window.app_handle().state::<BackendProcess>();
                 let mut guard = state.0.lock().unwrap();
                 if let Some(mut child) = guard.take() {
@@ -182,6 +233,7 @@ fn main() {
                     let _ = child.wait();
                 }
             }
+            _ => {}
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

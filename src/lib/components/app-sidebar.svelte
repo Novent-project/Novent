@@ -6,6 +6,7 @@
 
   type Props = {
   groupedLaps?:  Record<string, Record<string, Record<string, Record<string, any>>>>;
+  activeGame?:   string | null;
   selectedLap?:  any;
   compLapIds?:   string[];
   canAddComp?:   boolean;
@@ -16,6 +17,7 @@
 
 let {
   groupedLaps  = {},
+  activeGame   = $bindable(null),
   selectedLap  = undefined,
   compLapIds   = [] as string[],
   canAddComp   = true,
@@ -27,10 +29,9 @@ let {
   const LAP_COLORS = ['#ffffff', '#f59e0b', '#3b82f6'];
 
   const games = $derived(Object.keys(groupedLaps));
-  let activeGame = $state<string | null>(null);
 
   $effect(() => {
-    if (!activeGame && games.length > 0) activeGame = games[0];
+    if ((!activeGame || !games.includes(activeGame)) && games.length > 0) activeGame = games[0];
   });
 
 function formatGame(raw: string): string {
@@ -86,25 +87,29 @@ function formatGameFull(raw: string): string {
 {/snippet}
 
 <Sidebar.Root>
-  <Sidebar.Header class="p-4 border-b border-border/50 overflow-hidden">
-    <div class="flex items-center font-bold text-lg tracking-tight truncate">
-      <span class="truncate">OpenSimTelemetry</span>
+  <Sidebar.Header class="p-4 border-b border-white/[0.06] overflow-hidden">
+    <div class="flex items-center gap-2.5 truncate">
+      <svg class="h-7 w-7 shrink-0 text-emerald-500" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+        <path d="M14 8 H50 a6 6 0 0 1 6 6 V42 L42 56 H14 a6 6 0 0 1 -6 -6 V14 a6 6 0 0 1 6 -6 Z" fill="currentColor" fill-opacity="0.12" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+        <path d="M24 45 V21 L40 45 V21" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="truncate font-bold text-[15px] tracking-tight text-white">Novent</span>
     </div>
   </Sidebar.Header>
 
   <!-- Game tabs -->
   {#if games.length > 0}
-    <div class="flex border-b border-border/50 shrink-0">
+    <div class="flex border-b border-white/[0.06] shrink-0">
       {#each games as game}
         <button
           onclick={() => activeGame = game}
           title={formatGameFull(game)}
           class="
-            flex-1 py-2 px-1 text-[11px] font-semibold tracking-wide uppercase truncate
+            flex-1 py-2.5 px-1 text-[11px] font-semibold tracking-wide uppercase truncate
             transition-colors border-b-2
             {activeGame === game
-              ? 'border-white text-white bg-zinc-800/40'
-              : 'border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/20'}
+              ? 'border-emerald-400 text-white bg-emerald-500/[0.08]'
+              : 'border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]'}
           "
         >
           {formatGame(game)}
@@ -180,9 +185,10 @@ function formatGameFull(raw: string): string {
                                               <Sidebar.MenuButton
                                                 isActive={isPrimary}
                                                 onclick={() => onSelectLap?.(lap)}
-                                                class="flex-1 h-auto py-1 my-0.5 overflow-hidden px-1 transition-colors
-                                                       data-[active=true]:bg-white/10 data-[active=true]:text-white
-                                                       hover:bg-zinc-800/80 min-w-0"
+                                                class="flex-1 h-auto py-1 my-0.5 overflow-hidden px-1 rounded-sm transition-colors
+                                                       data-[active=true]:bg-emerald-500/10 data-[active=true]:text-white
+                                                       data-[active=true]:ring-1 data-[active=true]:ring-emerald-500/25
+                                                       hover:bg-white/[0.04] min-w-0"
                                               >
                                                 <div class="flex items-center justify-between w-full min-w-0 gap-1">
                                                   <div class="flex items-center gap-1.5 truncate min-w-0">
@@ -193,7 +199,7 @@ function formatGameFull(raw: string): string {
                                                         style="background:{color}"
                                                       ></span>
                                                     {:else if isPrimary}
-                                                      <span class="shrink-0 w-1.5 h-1.5 rounded-full bg-white"></span>
+                                                      <span class="shrink-0 w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                                                     {:else}
                                                       <span class="shrink-0 w-1.5 h-1.5"></span>
                                                     {/if}
