@@ -1,11 +1,7 @@
 <script lang="ts">
   import AppSidebar from "$lib/components/app-sidebar.svelte";
-  import * as Breadcrumb from "$lib/components/ui/breadcrumb/index";
   import { Separator } from "$lib/components/ui/separator/index";
   import * as Sidebar from "$lib/components/ui/sidebar/index";
-  import * as Menubar from "$lib/components/ui/menubar/index";
-  import * as Tabs from "$lib/components/ui/tabs/index";
-  import * as Card from "$lib/components/ui/card/index";
   import { onMount } from 'svelte';
   import { AspectRatio } from "$lib/components/ui/aspect-ratio/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
@@ -1332,7 +1328,7 @@ function stopPlayback(fromEndOfLap = false) {
         splash.classList.add('hide');
         setTimeout(() => splash.remove(), 650);
       };
-      const MIN_SPLASH = 2000;
+      const MIN_SPLASH = 4000;
       const elapsed = performance.now();
       elapsed < MIN_SPLASH ? setTimeout(reveal, MIN_SPLASH - elapsed) : reveal();
       pollInterval = setInterval(fetchLaps, 3000);
