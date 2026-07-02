@@ -1,4 +1,4 @@
-import { setupCanvas, buildSlots, distBucket, type DownsampledTrace, type Trace, type ChartWindow } from './shared.js';
+import { setupCanvas, buildSlots, distBucket, drawValueLabel, type DownsampledTrace, type Trace, type ChartWindow } from './shared.js';
 
 interface CompLap {
 	trace: Trace;
@@ -98,16 +98,7 @@ export function drawThrottle(
 	ctx.fill();
 	ctx.shadowBlur = 0;
 
-	const label = Math.round(val) + '%';
-	ctx.font     = 'bold 9px monospace';
-	const tw     = ctx.measureText(label).width;
-	ctx.fillStyle = 'rgba(20,20,20,0.85)';
-	ctx.beginPath();
-	ctx.roundRect(w / 2 + 7, dotY, tw + 10, 17, 3);
-	ctx.fill();
-	ctx.fillStyle  = '#10b981';
-	ctx.textAlign  = 'left';
-	ctx.fillText(label, w / 2 + 12, dotY + 11);
+	drawValueLabel(ctx, w, h, dotY, Math.round(val) + '%', '#10b981');
 }
 
 export function drawThrottleSingle(

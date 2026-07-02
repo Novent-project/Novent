@@ -1,4 +1,4 @@
-import { setupCanvas, buildSlots, distBucket, type DownsampledTrace, type Trace, type ChartWindow } from './shared.js';
+import { setupCanvas, buildSlots, distBucket, drawValueLabel, type DownsampledTrace, type Trace, type ChartWindow } from './shared.js';
 
 export function deltaRangeFor(primary: DownsampledTrace, reference: DownsampledTrace): number {
 	const n = Math.min(primary.time.length, reference.time.length);
@@ -88,15 +88,6 @@ export function drawDelta(
 		ctx.arc(w / 2, y, 3.5, 0, Math.PI * 2);
 		ctx.fill();
 
-		const label = `${cur > 0 ? '+' : ''}${cur.toFixed(2)}s`;
-		ctx.font      = 'bold 9px monospace';
-		const tw      = ctx.measureText(label).width;
-		ctx.fillStyle = 'rgba(20,20,20,0.85)';
-		ctx.beginPath();
-		ctx.roundRect(w / 2 + 7, y - 8, tw + 10, 17, 3);
-		ctx.fill();
-		ctx.fillStyle = col;
-		ctx.textAlign = 'left';
-		ctx.fillText(label, w / 2 + 12, y + 3);
+		drawValueLabel(ctx, w, h, y, `${cur > 0 ? '+' : ''}${cur.toFixed(2)}s`, col);
 	}
 }

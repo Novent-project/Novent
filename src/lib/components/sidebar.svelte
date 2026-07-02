@@ -66,8 +66,9 @@
 			<svg class="logo" viewBox="0 0 64 64" fill="none" aria-hidden="true">
 				<path d="M14 8 H50 a6 6 0 0 1 6 6 V42 L42 56 H14 a6 6 0 0 1 -6 -6 V14 a6 6 0 0 1 6 -6 Z"
 					fill="currentColor" fill-opacity="0.12" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
-				<path d="M24 45 V21 L40 45 V21"
-					stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+				<path transform="translate(16 23.2) scale(0.2)"
+					d="M0,88 L30,88 L46,44 L64,44 L80,88 L110,88 L126,44 L144,44 L160,0 L130,0 L114,44 L96,44 L80,0 L50,0 L34,44 L16,44 Z"
+					fill="currentColor"/>
 			</svg>
 			<span class="logo-name">Novent</span>
 		{/if}

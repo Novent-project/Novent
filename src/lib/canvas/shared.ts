@@ -114,6 +114,33 @@ export function buildSlots(windowSize: number): number[] {
 	return slots;
 }
 
+export function drawValueLabel(
+	ctx:   CanvasRenderingContext2D,
+	w:     number,
+	h:     number,
+	dotY:  number,
+	label: string,
+	color: string
+): void {
+	ctx.font = 'bold 9px monospace';
+	const boxW = ctx.measureText(label).width + 10;
+	const boxH = 17;
+	const m    = 2;
+	let x = w / 2 + 7;
+	if (x + boxW > w - m) x = w / 2 - 7 - boxW;
+	if (x < m) x = m;
+	let y = dotY - boxH / 2;
+	if (y < m) y = m;
+	if (y > h - boxH - m) y = h - boxH - m;
+	ctx.fillStyle = 'rgba(20,20,20,0.85)';
+	ctx.beginPath();
+	ctx.roundRect(x, y, boxW, boxH, 3);
+	ctx.fill();
+	ctx.fillStyle = color;
+	ctx.textAlign = 'left';
+	ctx.fillText(label, x + 5, y + 12);
+}
+
 export function compIndexAt(
 	comp: { trace: Trace; ds: DownsampledTrace },
 	primaryTime: number

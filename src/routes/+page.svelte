@@ -24,10 +24,10 @@
 	import { drawThrottleSingle } from '$lib/canvas/throttle.js';
 	import { drawBrake } from '$lib/canvas/brake.js';
 	import { drawSteering, drawSteeringSingle } from '$lib/canvas/steering.js';
-	import { drawMap, fitMap } from '$lib/canvas/map.js';
+	import { drawMap, fitMap, smoothBoundary } from '$lib/canvas/map.js';
 	import { drawDelta, deltaRangeFor } from '$lib/canvas/delta.js';
 	import { parseLapTime, formatTime, gameLabel, gameShort } from '$lib/utils/format.js';
-	import acLogo from '$lib/assets/Logos/Assetocorsa.png';
+	import acLogo from '$lib/assets/Logos/Assetto_Corsa_Symbol.svg';
 	import accLogo from '$lib/assets/Logos/ACClogo.png';
 
 	interface SessionData {
@@ -337,7 +337,8 @@
 		currentTime      = 0;
 		dsTrace          = downsample(currentTrace, lapTimeSec);
 		if (dsTrace) chartWindow = chartWindowFor(dsTrace, lapTimeSec);
-		boundaries = await fetchBoundaries(lap.game || 'ACC', lap.track, lap.uuid);
+		const fetched = await fetchBoundaries(lap.game || 'ACC', lap.track, lap.uuid);
+		boundaries = fetched ? { inner: smoothBoundary(fetched.inner), outer: smoothBoundary(fetched.outer) } : null;
 		redrawAll(0);
 		if (currentTrace.normPos.length > 0) startPlayback();
 	}

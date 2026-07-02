@@ -1,4 +1,4 @@
-import { setupCanvas, buildSlots, distBucket, type DownsampledTrace, type Trace, type ChartWindow } from './shared.js';
+import { setupCanvas, buildSlots, distBucket, drawValueLabel, type DownsampledTrace, type Trace, type ChartWindow } from './shared.js';
 
 interface CompLap {
 	trace: Trace;
@@ -113,15 +113,7 @@ export function drawSteering(
 	const absVal = Math.abs(val * 100);
 	const dir    = val > 0.005 ? 'L' : val < -0.005 ? 'R' : '';
 	const label  = dir ? `${dir} ${Math.round(absVal)}%` : `${Math.round(absVal)}%`;
-	ctx.font      = 'bold 9px monospace';
-	const tw      = ctx.measureText(label).width;
-	ctx.fillStyle = 'rgba(20,20,20,0.85)';
-	ctx.beginPath();
-	ctx.roundRect(w / 2 + 7, dotY - 8, tw + 10, 17, 3);
-	ctx.fill();
-	ctx.fillStyle  = '#8b5cf6';
-	ctx.textAlign  = 'left';
-	ctx.fillText(label, w / 2 + 12, dotY + 3);
+	drawValueLabel(ctx, w, h, dotY, label, '#8b5cf6');
 }
 
 export function drawSteeringSingle(

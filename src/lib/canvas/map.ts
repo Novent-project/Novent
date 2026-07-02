@@ -11,6 +11,25 @@ function isGarbage(x: number, z: number): boolean {
 	return (x === 0 && z === 0) || Math.abs(x) > 50000 || Math.abs(z) > 50000;
 }
 
+export function smoothBoundary(pts: { x: number; z: number }[], window = 7): { x: number; z: number }[] {
+	const n = pts.length;
+	if (n < window || window < 3) return pts;
+	const gx = (p: any) => p.x ?? p[0];
+	const gz = (p: any) => p.z ?? p[1];
+	const half = window >> 1;
+	const out: { x: number; z: number }[] = [];
+	for (let i = 0; i < n; i++) {
+		let sx = 0, sz = 0;
+		for (let k = -half; k <= half; k++) {
+			const p = pts[((i + k) % n + n) % n];
+			sx += gx(p);
+			sz += gz(p);
+		}
+		out.push({ x: sx / window, z: sz / window });
+	}
+	return out;
+}
+
 export function fitMap(
 	trace: Trace,
 	w:     number,
@@ -71,16 +90,23 @@ export function drawMap(
 
 		for (const arr of [boundaries.outer, boundaries.inner]) {
 			if (!arr?.length) continue;
-			ctx.beginPath();
-			let first = true;
+			const sp: { x: number; y: number }[] = [];
 			for (const pt of arr) {
 				const px = pt.x ?? (pt as any)[0];
 				const pz = pt.z ?? (pt as any)[1];
 				if (px === undefined || pz === undefined) continue;
 				const { sx, sz } = toScreen(px, pz);
 				if (isNaN(sx) || isNaN(sz)) continue;
-				first ? ctx.moveTo(sx, sz) : ctx.lineTo(sx, sz);
-				first = false;
+				sp.push({ x: sx, y: sz });
+			}
+			if (sp.length < 3) continue;
+			const n = sp.length;
+			ctx.beginPath();
+			ctx.moveTo((sp[n - 1].x + sp[0].x) / 2, (sp[n - 1].y + sp[0].y) / 2);
+			for (let i = 0; i < n; i++) {
+				const cur = sp[i];
+				const nxt = sp[(i + 1) % n];
+				ctx.quadraticCurveTo(cur.x, cur.y, (cur.x + nxt.x) / 2, (cur.y + nxt.y) / 2);
 			}
 			ctx.closePath();
 			ctx.stroke();
