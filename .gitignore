@@ -8,6 +8,7 @@ node_modules/
 .wrangler
 /.svelte-kit
 /build
+dist/
 
 # OS
 .DS_Store
@@ -26,20 +27,19 @@ vite.config.ts.timestamp-*
 # Editor
 .vscode/
 
-# Git
-.git/
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
 
-__pycache__/
-backend.py
-
-# Package lock
+# Package lock (using pnpm, not npm)
 package-lock.json
 
 # Tauri
-src-tauri/.cargo/
 src-tauri/target/
-src-tauri/Cargo.lock
+src-tauri/.cargo/
 src-tauri/.DS_Store
 src-tauri/.env
 src-tauri/.env.*
 src-tauri/vite.config.js.timestamp-*
+src-tauri/gen/

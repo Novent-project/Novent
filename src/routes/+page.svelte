@@ -27,8 +27,8 @@
 	import { drawMap, fitMap, smoothBoundary } from '$lib/canvas/map.js';
 	import { drawDelta, deltaRangeFor } from '$lib/canvas/delta.js';
 	import { parseLapTime, formatTime, gameLabel, gameShort } from '$lib/utils/format.js';
-	import acLogo from '$lib/assets/Logos/Assetto_Corsa_Symbol.svg';
-	import accLogo from '$lib/assets/Logos/ACClogo.png';
+	import acLogo from '$lib/assets/icons/Assetto_Corsa_Symbol.svg';
+	import accLogo from '$lib/assets/icons/ACClogo.png';
 
 	interface SessionData {
 		laps:      Lap[];
